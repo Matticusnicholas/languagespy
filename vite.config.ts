@@ -34,6 +34,18 @@ export default defineConfig({
           src: 'node_modules/onnxruntime-web/dist/*.mjs',
           dest: '.',
         },
+        // transformers.js's own ORT WASM bundle — needed by the Whisper worker.
+        // We serve these from /ort/ so we can pin env.backends.onnx.wasm.wasmPaths
+        // to a stable URL (the version-pinned jsdelivr fallback is skipped inside
+        // workers, which causes "no available backend found").
+        {
+          src: 'node_modules/@huggingface/transformers/dist/*.wasm',
+          dest: 'ort',
+        },
+        {
+          src: 'node_modules/@huggingface/transformers/dist/*.mjs',
+          dest: 'ort',
+        },
       ],
     }),
     VitePWA({
@@ -59,7 +71,7 @@ export default defineConfig({
         // model weights are handled by runtime caching below (huge precache manifests
         // bloat memory and hit Workbox's per-file limit).
         globPatterns: ['**/*.{js,css,html,svg}'],
-        globIgnores: ['**/ort-*.wasm', '**/ort-*.mjs', '**/*.onnx'],
+        globIgnores: ['**/ort-*.wasm', '**/ort-*.mjs', '**/*.onnx', 'ort/**'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         navigateFallback: `${base}index.html`,
         runtimeCaching: [

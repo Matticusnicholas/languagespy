@@ -11,6 +11,16 @@ import {
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
+// transformers.js sets a CDN default for wasmPaths only outside workers, so we
+// pin it ourselves to the copy that vite-plugin-static-copy publishes at /ort/.
+// Without this, ORT throws "no available backend found".
+declare const self: DedicatedWorkerGlobalScope;
+const ortBase = new URL('ort/', self.location.href).toString();
+// @ts-expect-error — runtime ORT env, no public TS surface for nested fields
+env.backends.onnx.wasm.wasmPaths = ortBase;
+// @ts-expect-error — same
+env.backends.onnx.wasm.numThreads = 1; // GitHub Pages lacks COOP/COEP for threads
+
 type LoadMsg = {
   type: 'load';
   modelId: string;
@@ -39,11 +49,10 @@ async function loadModel(modelId: string, device: 'webgpu' | 'wasm') {
   const key = `${modelId}|${device}`;
   if (key === currentModelKey && asr) return;
 
-  const options: PretrainedModelOptions = {
-    device,
-    dtype: device === 'webgpu' ? 'fp32' : 'q8',
+  const buildOptions = (d: 'webgpu' | 'wasm'): PretrainedModelOptions => ({
+    device: d,
+    dtype: d === 'webgpu' ? 'fp32' : 'q8',
     progress_callback: (data: any) => {
-      // Forward HF download progress so the UI can show "Downloading model…"
       self.postMessage({
         type: 'loading',
         progress: typeof data.progress === 'number' ? data.progress : 0,
@@ -51,14 +60,34 @@ async function loadModel(modelId: string, device: 'webgpu' | 'wasm') {
         status: data.status,
       } satisfies OutMsg);
     },
-  };
+  });
 
-  asr = (await pipeline(
-    'automatic-speech-recognition',
-    modelId,
-    options,
-  )) as unknown as AutomaticSpeechRecognitionPipeline;
-  currentModelKey = key;
+  try {
+    asr = (await pipeline(
+      'automatic-speech-recognition',
+      modelId,
+      buildOptions(device),
+    )) as unknown as AutomaticSpeechRecognitionPipeline;
+    currentModelKey = key;
+  } catch (err) {
+    // WebGPU often fails on phones with "no available backend found" — fall
+    // back to WASM transparently so the user still gets a working app.
+    if (device === 'webgpu') {
+      self.postMessage({
+        type: 'loading',
+        progress: 0,
+        status: 'WebGPU unavailable — falling back to WASM',
+      } satisfies OutMsg);
+      asr = (await pipeline(
+        'automatic-speech-recognition',
+        modelId,
+        buildOptions('wasm'),
+      )) as unknown as AutomaticSpeechRecognitionPipeline;
+      currentModelKey = `${modelId}|wasm`;
+      return;
+    }
+    throw err;
+  }
 }
 
 self.addEventListener('message', async (e: MessageEvent<InMsg>) => {
