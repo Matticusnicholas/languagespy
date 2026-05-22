@@ -32,11 +32,17 @@ env.useBrowserCache = true;
 
 const baseUrl = import.meta.env.BASE_URL;
 const ortBase = new URL('ort/', new URL(baseUrl, self.location.href)).toString();
+const wasmUrl = `${ortBase}ort-wasm-simd-threaded.jsep.wasm`;
+const mjsUrl = `${ortBase}ort-wasm-simd-threaded.jsep.mjs`;
 log(`baseUrl=${baseUrl} ortBase=${ortBase}`);
 
 try {
+  // Object-form pins the exact files ORT must load, bypassing its internal
+  // variant selection (which previously asked for ort-wasm-simd.wasm — a
+  // non-threaded variant transformers.js doesn't ship — and 404'd).
+  // The .jsep variant works for both WebGPU and pure-WASM execution.
   // @ts-expect-error — runtime ORT env, no public TS surface for nested fields
-  env.backends.onnx.wasm.wasmPaths = ortBase;
+  env.backends.onnx.wasm.wasmPaths = { wasm: wasmUrl, mjs: mjsUrl };
   // @ts-expect-error
   env.backends.onnx.wasm.numThreads = 1;
   // @ts-expect-error
