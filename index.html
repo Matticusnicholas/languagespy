@@ -28,7 +28,7 @@
         <ul id="transcript" class="transcript" aria-live="polite"></ul>
 
         <p id="hint" class="hint">
-          Tap Start. The first run downloads a ~75 MB Whisper model — wait for "Listening".
+          Tap Start. The first run downloads a ~40 MB Whisper model — wait for "Listening".
           Keep the screen on. English speech is ignored by default.
         </p>
       </main>
@@ -50,6 +50,7 @@
           <label class="row">
             <span>Model</span>
             <select id="modelSize">
+              <option value="onnx-community/whisper-tiny">Tiny (~40 MB, fastest)</option>
               <option value="onnx-community/whisper-base">Base (~75 MB, faster)</option>
               <option value="onnx-community/whisper-small">Small (~250 MB, more accurate)</option>
             </select>

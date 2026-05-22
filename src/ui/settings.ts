@@ -11,7 +11,7 @@ const KEY = 'languagespy:settings:v1';
 export const defaultSettings: Settings = {
   showText: true,
   speakTts: true,
-  modelId: 'onnx-community/whisper-base',
+  modelId: 'onnx-community/whisper-tiny',
   ignoreLangs: ['en'],
   device: 'webgpu',
 };
