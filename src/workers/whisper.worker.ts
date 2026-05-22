@@ -7,47 +7,58 @@ import {
   env,
 } from '@huggingface/transformers';
 
-// Always pull weights from the Hub; we cache via service worker + IDB.
+declare const self: DedicatedWorkerGlobalScope;
+
+// Forward ANY uncaught error to the main thread so it can be displayed.
+const post = (m: OutMsg) => self.postMessage(m);
+const log = (msg: string, extra?: unknown) => {
+  console.log(`[worker] ${msg}`, extra ?? '');
+  post({ type: 'log', msg: extra !== undefined ? `${msg} ${safeStr(extra)}` : msg });
+};
+function safeStr(x: unknown): string {
+  try { return typeof x === 'string' ? x : JSON.stringify(x); } catch { return String(x); }
+}
+
+self.addEventListener('error', (e) => {
+  post({ type: 'error', error: `worker error: ${e.message} @ ${e.filename}:${e.lineno}` });
+});
+self.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+  post({ type: 'error', error: `unhandled rejection: ${safeStr(e.reason)}` });
+});
+
+// --- ORT setup ---
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-// transformers.js sets a CDN default for wasmPaths only outside workers, so we
-// pin it ourselves to the copy that vite-plugin-static-copy publishes at /ort/.
-// Without this, ORT throws "no available backend found".
-declare const self: DedicatedWorkerGlobalScope;
-
-// Use the base URL from Vite to find the 'ort' directory.
 const baseUrl = import.meta.env.BASE_URL;
 const ortBase = new URL('ort/', new URL(baseUrl, self.location.href)).toString();
+log(`baseUrl=${baseUrl} ortBase=${ortBase}`);
 
-console.log(`[worker] baseUrl: ${baseUrl}`);
-console.log(`[worker] ortBase: ${ortBase}`);
+try {
+  // @ts-expect-error — runtime ORT env, no public TS surface for nested fields
+  env.backends.onnx.wasm.wasmPaths = ortBase;
+  // @ts-expect-error
+  env.backends.onnx.wasm.numThreads = 1;
+  // @ts-expect-error
+  env.backends.onnx.wasm.proxy = false;
+} catch (err) {
+  log('failed to set ORT env', err);
+}
 
-// @ts-expect-error — runtime ORT env, no public TS surface for nested fields
-env.backends.onnx.wasm.wasmPaths = ortBase;
-// @ts-expect-error — same
-env.backends.onnx.wasm.numThreads = 1; 
-// @ts-expect-error — same
-env.backends.onnx.wasm.proxy = false; 
-
-type LoadMsg = {
-  type: 'load';
-  modelId: string;
-  device: 'webgpu' | 'wasm';
-};
-
+// --- Message protocol ---
+type LoadMsg = { type: 'load'; modelId: string; device: 'webgpu' | 'wasm' };
 type TranscribeMsg = {
   type: 'transcribe';
   id: number;
   audio: Float32Array;
   ignoreLangs: string[];
 };
-
 type InMsg = LoadMsg | TranscribeMsg;
 
 type OutMsg =
-  | { type: 'ready' }
-  | { type: 'loading'; progress: number; file?: string; status?: string }
+  | { type: 'ready'; device: 'webgpu' | 'wasm' }
+  | { type: 'progress'; status: string; file?: string; progress?: number; loaded?: number; total?: number }
+  | { type: 'log'; msg: string }
   | { type: 'error'; error: string }
   | { type: 'result'; id: number; ignored: boolean; language: string | null; text: string };
 
@@ -56,64 +67,65 @@ let currentModelKey: string | null = null;
 
 async function loadModel(modelId: string, device: 'webgpu' | 'wasm') {
   const key = `${modelId}|${device}`;
-  if (key === currentModelKey && asr) return;
+  if (key === currentModelKey && asr) {
+    log(`reusing model ${key}`);
+    post({ type: 'ready', device });
+    return;
+  }
 
-  // If WebGPU is requested but not supported, fall back immediately.
   let targetDevice = device;
-  if (targetDevice === 'webgpu' && !('gpu' in navigator)) {
-    console.warn('[worker] WebGPU not supported by this browser, falling back to WASM');
+  if (targetDevice === 'webgpu' && !('gpu' in self.navigator)) {
+    log('WebGPU not available, using WASM');
     targetDevice = 'wasm';
   }
 
-  console.log(`[worker] Loading model: ${modelId} on ${targetDevice}`);
-
   const buildOptions = (d: 'webgpu' | 'wasm'): PretrainedModelOptions => ({
     device: d,
-    dtype: d === 'webgpu' ? 'fp16' : 'q8',
+    // q4 is the most broadly-supported quantization. fp16 requires shader-f16
+    // which most mobile GPUs lack; fp32 is unnecessarily large.
+    dtype: d === 'webgpu' ? 'q4' : 'q8',
     progress_callback: (data: any) => {
-      if (data.status === 'progress') {
-        self.postMessage({
-          type: 'loading',
-          progress: typeof data.progress === 'number' ? data.progress : 0,
-          file: data.file,
-          status: data.status,
-        } satisfies OutMsg);
-      } else {
-        console.log(`[worker] Loading status: ${data.status} ${data.file || ''}`);
-      }
+      const status: string = data?.status ?? 'unknown';
+      // Forward every event — gives the UI full visibility into where it stalls.
+      post({
+        type: 'progress',
+        status,
+        file: data?.file,
+        progress: typeof data?.progress === 'number' ? data.progress : undefined,
+        loaded: typeof data?.loaded === 'number' ? data.loaded : undefined,
+        total: typeof data?.total === 'number' ? data.total : undefined,
+      });
     },
   });
 
-  try {
-    asr = (await pipeline(
+  const tryLoad = async (d: 'webgpu' | 'wasm') => {
+    log(`pipeline() starting model=${modelId} device=${d}`);
+    const t0 = performance.now();
+    const p = (await pipeline(
       'automatic-speech-recognition',
       modelId,
-      buildOptions(targetDevice),
+      buildOptions(d),
     )) as unknown as AutomaticSpeechRecognitionPipeline;
+    log(`pipeline() ready device=${d} in ${Math.round(performance.now() - t0)}ms`);
+    return p;
+  };
+
+  try {
+    asr = await tryLoad(targetDevice);
     currentModelKey = `${modelId}|${targetDevice}`;
-    console.log(`[worker] Model loaded successfully: ${currentModelKey}`);
+    post({ type: 'ready', device: targetDevice });
   } catch (err) {
-    console.error(`[worker] Failed to load model on ${targetDevice}:`, err);
-    
+    log(`load failed on ${targetDevice}`, err instanceof Error ? err.message : err);
     if (targetDevice === 'webgpu') {
-      console.log('[worker] WebGPU failed, falling back to WASM...');
-      self.postMessage({
-        type: 'loading',
-        progress: 0,
-        status: 'WebGPU failed — falling back to WASM',
-      } satisfies OutMsg);
+      post({ type: 'progress', status: 'fallback-wasm' });
       try {
-        asr = (await pipeline(
-          'automatic-speech-recognition',
-          modelId,
-          buildOptions('wasm'),
-        )) as unknown as AutomaticSpeechRecognitionPipeline;
+        asr = await tryLoad('wasm');
         currentModelKey = `${modelId}|wasm`;
-        console.log('[worker] Model loaded successfully (WASM fallback)');
+        post({ type: 'ready', device: 'wasm' });
         return;
       } catch (wasmErr) {
-        console.error('[worker] WASM fallback also failed:', wasmErr);
-        throw wasmErr;
+        const m = wasmErr instanceof Error ? wasmErr.message : String(wasmErr);
+        throw new Error(`Both WebGPU and WASM failed. Last error: ${m}`);
       }
     }
     throw err;
@@ -125,44 +137,31 @@ self.addEventListener('message', async (e: MessageEvent<InMsg>) => {
   try {
     if (msg.type === 'load') {
       await loadModel(msg.modelId, msg.device);
-      self.postMessage({ type: 'ready' } satisfies OutMsg);
       return;
     }
 
     if (msg.type === 'transcribe') {
       if (!asr) throw new Error('Model not loaded');
 
-      // Single pass: task='translate' forces English output regardless of
-      // source language, and the result includes the detected language so we
-      // can filter out languages the user wants to ignore (default: English).
       const out: any = await asr(msg.audio, {
         task: 'translate',
-        // omit `language` -> whisper auto-detects
         return_timestamps: false,
         chunk_length_s: 30,
       } as any);
 
-      // transformers.js returns either a single object or array depending on chunking.
       const first = Array.isArray(out) ? out[0] : out;
       const detected: string | null = first?.language ?? null;
       const text: string = (first?.text ?? '').trim();
-
       const ignored = !!detected && msg.ignoreLangs.includes(detected.toLowerCase());
 
-      self.postMessage({
-        type: 'result',
-        id: msg.id,
-        ignored,
-        language: detected,
-        text,
-      } satisfies OutMsg);
+      post({ type: 'result', id: msg.id, ignored, language: detected, text });
     }
   } catch (err) {
-    self.postMessage({
-      type: 'error',
-      error: err instanceof Error ? err.message : String(err),
-    } satisfies OutMsg);
+    const m = err instanceof Error ? err.message : String(err);
+    post({ type: 'error', error: m });
   }
 });
 
-export {}; // make this a module
+log('worker module loaded');
+
+export {};
