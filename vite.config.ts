@@ -46,6 +46,15 @@ export default defineConfig(({ mode }) => {
             src: 'node_modules/@huggingface/transformers/dist/*.mjs',
             dest: 'ort',
           },
+          // Also copy onnxruntime-web's own files just in case Transformers.js needs them
+          {
+            src: 'node_modules/onnxruntime-web/dist/*.wasm',
+            dest: 'ort',
+          },
+          {
+            src: 'node_modules/onnxruntime-web/dist/*.mjs',
+            dest: 'ort',
+          },
         ],
       }),
       VitePWA({

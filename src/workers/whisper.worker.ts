@@ -20,10 +20,15 @@ declare const self: DedicatedWorkerGlobalScope;
 const baseUrl = import.meta.env.BASE_URL;
 const ortBase = new URL('ort/', new URL(baseUrl, self.location.href)).toString();
 
+console.log(`[worker] baseUrl: ${baseUrl}`);
+console.log(`[worker] ortBase: ${ortBase}`);
+
 // @ts-expect-error — runtime ORT env, no public TS surface for nested fields
 env.backends.onnx.wasm.wasmPaths = ortBase;
 // @ts-expect-error — same
-env.backends.onnx.wasm.numThreads = 1; // GitHub Pages lacks COOP/COEP for threads
+env.backends.onnx.wasm.numThreads = 1; 
+// @ts-expect-error — same
+env.backends.onnx.wasm.proxy = false; 
 
 type LoadMsg = {
   type: 'load';
@@ -53,7 +58,14 @@ async function loadModel(modelId: string, device: 'webgpu' | 'wasm') {
   const key = `${modelId}|${device}`;
   if (key === currentModelKey && asr) return;
 
-  console.log(`[worker] Loading model: ${modelId} on ${device}`);
+  // If WebGPU is requested but not supported, fall back immediately.
+  let targetDevice = device;
+  if (targetDevice === 'webgpu' && !('gpu' in navigator)) {
+    console.warn('[worker] WebGPU not supported by this browser, falling back to WASM');
+    targetDevice = 'wasm';
+  }
+
+  console.log(`[worker] Loading model: ${modelId} on ${targetDevice}`);
 
   const buildOptions = (d: 'webgpu' | 'wasm'): PretrainedModelOptions => ({
     device: d,
@@ -76,29 +88,33 @@ async function loadModel(modelId: string, device: 'webgpu' | 'wasm') {
     asr = (await pipeline(
       'automatic-speech-recognition',
       modelId,
-      buildOptions(device),
+      buildOptions(targetDevice),
     )) as unknown as AutomaticSpeechRecognitionPipeline;
-    currentModelKey = key;
-    console.log(`[worker] Model loaded successfully: ${key}`);
+    currentModelKey = `${modelId}|${targetDevice}`;
+    console.log(`[worker] Model loaded successfully: ${currentModelKey}`);
   } catch (err) {
-    console.error(`[worker] Failed to load model on ${device}:`, err);
-    // WebGPU often fails on phones with "no available backend found" — fall
-    // back to WASM transparently so the user still gets a working app.
-    if (device === 'webgpu') {
-      console.log('[worker] Falling back to WASM...');
+    console.error(`[worker] Failed to load model on ${targetDevice}:`, err);
+    
+    if (targetDevice === 'webgpu') {
+      console.log('[worker] WebGPU failed, falling back to WASM...');
       self.postMessage({
         type: 'loading',
         progress: 0,
-        status: 'WebGPU unavailable — falling back to WASM',
+        status: 'WebGPU failed — falling back to WASM',
       } satisfies OutMsg);
-      asr = (await pipeline(
-        'automatic-speech-recognition',
-        modelId,
-        buildOptions('wasm'),
-      )) as unknown as AutomaticSpeechRecognitionPipeline;
-      currentModelKey = `${modelId}|wasm`;
-      console.log('[worker] Model loaded successfully (WASM fallback)');
-      return;
+      try {
+        asr = (await pipeline(
+          'automatic-speech-recognition',
+          modelId,
+          buildOptions('wasm'),
+        )) as unknown as AutomaticSpeechRecognitionPipeline;
+        currentModelKey = `${modelId}|wasm`;
+        console.log('[worker] Model loaded successfully (WASM fallback)');
+        return;
+      } catch (wasmErr) {
+        console.error('[worker] WASM fallback also failed:', wasmErr);
+        throw wasmErr;
+      }
     }
     throw err;
   }
