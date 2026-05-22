@@ -1,0 +1,22 @@
+{
+  "name": "languagespy",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host",
+    "deploy:check": "vite build && vite preview"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.0.0",
+    "@ricky0123/vad-web": "^0.0.24"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vite-plugin-pwa": "^0.21.0",
+    "vite-plugin-static-copy": "^2.2.0"
+  }
+}

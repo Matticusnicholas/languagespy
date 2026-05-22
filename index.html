@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#0b0f17" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>LanguageSpy</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1>LanguageSpy</h1>
+        <button id="settingsBtn" aria-label="Settings">⚙</button>
+      </header>
+
+      <main>
+        <div class="status-row">
+          <span id="statusDot" class="dot idle"></span>
+          <span id="statusText">Idle</span>
+          <span id="langBadge" class="lang-badge" hidden></span>
+        </div>
+
+        <button id="startBtn" class="big-btn" type="button">Start Listening</button>
+
+        <ul id="transcript" class="transcript" aria-live="polite"></ul>
+
+        <p id="hint" class="hint">
+          Tap Start. The first run downloads a ~75 MB Whisper model — wait for "Listening".
+          Keep the screen on. English speech is ignored by default.
+        </p>
+      </main>
+
+      <dialog id="settingsDialog" class="settings">
+        <form method="dialog">
+          <h2>Settings</h2>
+
+          <label class="row">
+            <span>Show transcript</span>
+            <input type="checkbox" id="showText" checked />
+          </label>
+
+          <label class="row">
+            <span>Speak translation (TTS)</span>
+            <input type="checkbox" id="speakTts" checked />
+          </label>
+
+          <label class="row">
+            <span>Model</span>
+            <select id="modelSize">
+              <option value="onnx-community/whisper-base">Base (~75 MB, faster)</option>
+              <option value="onnx-community/whisper-small">Small (~250 MB, more accurate)</option>
+            </select>
+          </label>
+
+          <label class="row">
+            <span>Languages to ignore (comma-separated codes, e.g. en,es)</span>
+            <input type="text" id="ignoreLangs" value="en" />
+          </label>
+
+          <label class="row">
+            <span>Compute device</span>
+            <select id="device">
+              <option value="webgpu">WebGPU (faster, Android Chrome)</option>
+              <option value="wasm">WASM (fallback)</option>
+            </select>
+          </label>
+
+          <div class="actions">
+            <button type="button" id="clearBtn">Clear transcript</button>
+            <button type="button" id="downloadBtn">Download .txt</button>
+            <button value="close">Close</button>
+          </div>
+        </form>
+      </dialog>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

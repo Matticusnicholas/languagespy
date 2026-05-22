@@ -1,0 +1,211 @@
+:root {
+  --bg: #0b0f17;
+  --fg: #e6edf3;
+  --muted: #9ba8b9;
+  --accent: #4f9eff;
+  --accent-on: #19c37d;
+  --warn: #f0b429;
+  --card: #131a26;
+  --border: #1f2a3a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  overscroll-behavior: none;
+}
+
+#app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: env(safe-area-inset-top, 0) 16px env(safe-area-inset-bottom, 16px);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 8px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 22px;
+  letter-spacing: 0.2px;
+}
+
+#settingsBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 20px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+}
+.dot.idle { background: var(--muted); }
+.dot.listening { background: var(--accent-on); box-shadow: 0 0 0 4px rgba(25, 195, 125, 0.18); }
+.dot.busy { background: var(--warn); box-shadow: 0 0 0 4px rgba(240, 180, 41, 0.18); }
+.dot.loading { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
+.dot.error { background: #e5484d; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+#statusText { font-weight: 500; }
+
+.lang-badge {
+  margin-left: auto;
+  padding: 2px 8px;
+  background: var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.big-btn {
+  font-size: 20px;
+  padding: 18px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.big-btn:active { transform: scale(0.98); }
+.big-btn.stop { background: #e5484d; }
+.big-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.transcript {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.transcript li {
+  padding: 12px 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.transcript .meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.transcript .meta .src {
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  background: var(--border);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.transcript .text {
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  margin: 8px 0 16px;
+}
+
+.settings {
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--fg);
+  border-radius: 14px;
+  max-width: 90vw;
+  width: 480px;
+  padding: 20px;
+}
+.settings::backdrop {
+  background: rgba(0, 0, 0, 0.6);
+}
+.settings h2 { margin: 0 0 12px; }
+.settings .row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+.settings .row span { color: var(--muted); }
+.settings input[type="text"],
+.settings select {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 15px;
+}
+.settings .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.settings button {
+  background: var(--border);
+  color: var(--fg);
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.settings button[value="close"] { background: var(--accent); color: white; }
